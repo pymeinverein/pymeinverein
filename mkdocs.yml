@@ -1,0 +1,35 @@
+site_name: pymeinverein
+site_description: Async Python client for the (unofficial) WISO MeinVerein Web API
+docs_dir: docs
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.sections
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.highlight
+  - pymdownx.superfences
+nav:
+  - Overview: index.md
+  - Getting started: getting-started.md
+  - Authentication: authentication.md
+  - Members and contacts: members.md
+  - Exporting members: export.md
+  - Lists and custom fields: lists-and-fields.md
+  - Departments: departments.md
+  - Roles and permissions: roles.md
+  - Club settings: settings.md
+  - Contributions: contributions.md
+  - Events and calendar: events.md
+  - Finance and dashboard: finance.md
+  - Documents: documents.md
+  - Mailings: mailing.md
+  - Reports: reports.md
+  - Command line: cli.md
+  - Mock server: mock-server.md
+  - How the API was discovered: api-discovery.md
+  - Endpoint coverage: endpoints.md
+  - Development: development.md
+  - Releasing: releasing.md

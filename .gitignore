@@ -1,0 +1,20 @@
+# HAR captures contain session tokens and personal data - never commit them
+har
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Tools
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+site/
+
+# Local secrets
+.env
