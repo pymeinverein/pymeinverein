@@ -12,11 +12,12 @@ do not break parsing); compare them with the enums::
 
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from enum import IntEnum
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from .base import ApiModel
 
@@ -115,11 +116,49 @@ class MembershipHistory(ApiModel):
     is_honoured: bool | None = None
 
 
+@dataclass(frozen=True)
+class MembershipPeriod:
+    """A membership period to set with ``MembersAPI.set_memberships``.
+
+    Unlike :class:`MembershipHistory` (what the API sends back) this describes
+    the complete wanted state of one period: ``end=None`` means the period is
+    open, and an existing end date is removed.
+    """
+
+    #: Department or function: id, unique name, ``"Department/Function"`` path
+    #: or :class:`SubArea`; ``None`` means the club as a whole.
+    department: int | str | SubArea | None
+    start: date
+    end: date | None = None
+    #: Default: ``FORMER`` if the period ended before today, else ``ACTIVE``.
+    status: MemberState | None = None
+    honoured: bool = False
+
+    def effective_status(self, today: date | None = None) -> MemberState:
+        """The status sent to the API: ``status`` or the default described there."""
+        if self.status is not None:
+            return self.status
+        if self.end is not None and self.end < (today or date.today()):
+            return MemberState.FORMER
+        return MemberState.ACTIVE
+
+
 class IndividualFieldValue(ApiModel):
-    """Value(s) of a custom field ("individuelles Feld") for one member."""
+    """Value(s) of a custom field ("individuelles Feld") for one member.
+
+    A multiple choice field stores ``null`` for values that are not among its
+    options; those are left out here.
+    """
 
     individual_field_id: int
     values: list[str] = []
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _drop_nulls(cls, value: Any) -> Any:
+        if isinstance(value, list):
+            return [item for item in value if item is not None]
+        return value
 
 
 class RoleRef(ApiModel):

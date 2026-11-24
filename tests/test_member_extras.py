@@ -7,10 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from pymeinverein import LookupFailedError, MemberState, NotFoundError
+from pymeinverein import (
+    LookupFailedError,
+    MembershipPeriod,
+    MemberState,
+    NotFoundError,
+)
 from pymeinverein.api.bulk import custom_values
 from pymeinverein.api.clubs import ClubClient
-from pymeinverein.models import CommunicationChannel, PaymentMethod
+from pymeinverein.models import (
+    CommunicationChannel,
+    IndividualFieldType,
+    PaymentMethod,
+)
 from pymeinverein.testing import DEMO_CLUB_ID, MockServer, seed
 
 ERIKA, MAX, LENA, JONAS = 7002, 7003, 7004, 7005
@@ -118,6 +127,82 @@ async def test_set_membership_adds_and_changes_periods(club: ClubClient) -> None
     }
 
 
+async def test_set_memberships_in_one_update(club: ClubClient) -> None:
+    created = await club.members.create(last_name="Kette")
+    chained = await club.members.set_memberships(
+        created.id,
+        [
+            MembershipPeriod(
+                "1. Mannschaft - Damen/Spieler", date(2009, 1, 1), date(2009, 12, 31)
+            ),
+            MembershipPeriod(seed.DEPARTMENT_MEN, date(2010, 1, 1)),
+        ],
+    )
+    periods = {h.sub_area_id: h for h in chained.histories}
+    assert periods.keys() == {seed.PLAYERS_WOMEN, seed.DEPARTMENT_MEN}
+    ended = periods[seed.PLAYERS_WOMEN]
+    assert ended.status == MemberState.FORMER and ended.is_former
+    assert ended.membership_end is not None
+    assert ended.membership_end.date() == date(2009, 12, 31)
+    open_period = periods[seed.DEPARTMENT_MEN]
+    assert open_period.status == MemberState.ACTIVE
+    assert open_period.membership_end is None
+    assert chained.state == MemberState.ACTIVE
+
+    # Changing a period keeps its id and can remove the end date.
+    reopened = await club.members.set_memberships(
+        created.id, [MembershipPeriod(seed.PLAYERS_WOMEN, date(2008, 1, 1))]
+    )
+    again = {h.sub_area_id: h for h in reopened.histories}
+    assert again.keys() == periods.keys()  # the other period is kept
+    assert again[seed.PLAYERS_WOMEN].id == ended.id
+    assert again[seed.PLAYERS_WOMEN].membership_end is None
+    assert again[seed.PLAYERS_WOMEN].status == MemberState.ACTIVE
+    start = again[seed.PLAYERS_WOMEN].membership_start
+    assert start is not None and start.date() == date(2008, 1, 1)
+
+
+async def test_set_memberships_replace_and_duplicates(club: ClubClient) -> None:
+    created = await club.members.create(last_name="Ersatz")
+    await club.members.set_membership(created.id, seed.DEPARTMENT_MEN)
+    replaced = await club.members.set_memberships(
+        created.id,
+        [MembershipPeriod(seed.PLAYERS_MEN, date(2020, 1, 1), honoured=True)],
+        replace=True,
+    )
+    assert [h.sub_area_id for h in replaced.histories] == [seed.PLAYERS_MEN]
+    assert replaced.is_honoured is True
+    passive = await club.members.set_memberships(
+        created.id,
+        [
+            MembershipPeriod(
+                seed.PLAYERS_MEN, date(2020, 1, 1), status=MemberState.PASSIVE
+            )
+        ],
+    )
+    assert passive.state == MemberState.PASSIVE
+
+    with pytest.raises(ValueError, match="more than once"):
+        await club.members.set_memberships(
+            created.id,
+            [
+                MembershipPeriod(seed.PLAYERS_MEN, date(2020, 1, 1)),
+                MembershipPeriod(seed.PLAYERS_MEN, date(2021, 1, 1)),
+            ],
+        )
+
+
+def test_membership_period_default_status() -> None:
+    today = date(2026, 6, 1)
+    assert MembershipPeriod(None, date(2020, 1, 1)).effective_status(today) == (
+        MemberState.ACTIVE
+    )
+    ended = MembershipPeriod(None, date(2020, 1, 1), date(2025, 12, 31))
+    assert ended.effective_status(today) == MemberState.FORMER
+    later = MembershipPeriod(None, date(2020, 1, 1), date(2026, 12, 31))
+    assert later.effective_status(today) == MemberState.ACTIVE
+
+
 async def test_end_membership(club: ClubClient) -> None:
     former = await club.members.end_membership(ERIKA, date(2025, 6, 30))
     assert former.state == MemberState.FORMER
@@ -212,3 +297,17 @@ async def test_bulk_memberships(club: ClubClient) -> None:
     lena = (await club.members.list(search="Lena"))[0]
     assert lena.departments == ["1. Mannschaft - Damen"]
     assert lena.state == MemberState.ACTIVE
+
+
+async def test_multiselect_drops_values_that_are_no_option(club: ClubClient) -> None:
+    field = await club.custom_fields.create(
+        "Ämter", IndividualFieldType.MULTISELECT, options=["Kassenwart", "Amt2"]
+    )
+    await club.members.bulk.set_custom_fields([JONAS], {field.id: ["Amt2", "QQ"]})
+    await club.members.set_custom_field(ERIKA, field.id, ["QQ", "Kassenwart"])
+    assert (await club.members.get(JONAS)).custom_values[field.id] == ["Amt2"]
+    erika = await club.members.get(ERIKA)
+    assert erika.custom_values[field.id] == ["Kassenwart"]
+    # The update answer carries the same nulls and must parse too.
+    updated = await club.members.update(ERIKA, phone="1")
+    assert updated.custom_values[field.id] == ["Kassenwart"]

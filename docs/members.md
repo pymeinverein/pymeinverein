@@ -146,6 +146,24 @@ await club.members.set_membership(member.id, "1. Mannschaft - Damen", status=Mem
 await club.members.end_membership(member.id, date(2026, 12, 31))
 ```
 
+To set several periods at once - with exact start and end dates, in a single
+update - describe each one with a `MembershipPeriod`:
+
+```python
+from pymeinverein import MembershipPeriod
+
+await club.members.set_memberships(member.id, [
+    MembershipPeriod("Aktivitas/aF", date(2009, 1, 1), date(2009, 12, 31)),
+    MembershipPeriod("Aktivitas/aB", date(2010, 1, 1)),          # open
+])
+```
+
+A `MembershipPeriod` is the complete wanted state of its period: `end=None`
+leaves it open and removes an end date it had. The status defaults to
+`FORMER` for periods that ended before today and to `ACTIVE` otherwise.
+Periods for departments that are not mentioned are kept; pass `replace=True`
+to remove them.
+
 A department is given by id, by a unique name, or as `Department/Function`
 when the name alone is ambiguous. `department=None` means the club as a whole.
 A member created without periods is active and has `histories == []`.
@@ -159,8 +177,14 @@ await club.members.clear_custom_field(member.id, "Position")
 ```
 
 The field is given by name or id. Values are stored as text (`True` becomes
-`"true"`, lists stay lists); the API does not check them against the options of
-a selection field.
+`"true"`, lists stay lists).
+
+!!! warning "Multiple choice fields drop unknown values"
+    A multiple choice field stores `null` for every value that is not one of
+    its options - the call succeeds, but the value is lost. Reading leaves
+    these `null`s out. Add the option first (`club.custom_fields.update`).
+    Observed with the bulk edit call; other field types were not seen to
+    check their options.
 
 ## Pictures
 
@@ -268,7 +292,7 @@ await club.master_data.countries()               # country ids for addresses
 | `members.create` | `POST /protected/mv365/clubs/{club}/members` |
 | `members.update` | `GET` + `PATCH /protected/mv365/clubs/{club}/members/{id}` with `x-api-version: v2` |
 | `members.delete` | `POST /protected/club/{club}/members/delete` |
-| `members.set_membership`, `members.end_membership` | `GET` + `PATCH /protected/mv365/clubs/{club}/members/{id}` (field `histories`) |
+| `members.set_membership`, `members.set_memberships`, `members.end_membership` | `GET` + `PATCH /protected/mv365/clubs/{club}/members/{id}` (field `histories`) |
 | `members.set_custom_field` / `clear_custom_field` | `PUT` / `DELETE /protected/club/{club}/list/individual-field-data` |
 | `members.set_picture` / `delete_picture` | `POST` / `DELETE /protected/mv365/clubs/{club}/members/{id}/images` |
 | `members.bulk.*` | `PUT` or `POST /protected/club/{club}/members/bulk-edit/{communication-type, payment-types, individual-field-data, memberships}` |

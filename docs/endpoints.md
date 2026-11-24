@@ -21,7 +21,7 @@ Legend: **verified** = implemented and tested against the real demo club;
 | Club | `POST /protected/mv365/clubs/{club}/selected` | `club.select` | verified |
 | Members | `GET /protected/club/{club}/members/{id}` | `members.get` | verified |
 | Members | `POST /protected/mv365/clubs/{club}/members` | `members.create` | verified |
-| Members | `GET`, `PATCH /protected/mv365/clubs/{club}/members/{id}` | `members.update` | verified |
+| Members | `GET`, `PATCH /protected/mv365/clubs/{club}/members/{id}` | `members.update`, `set_membership`, `set_memberships`, `end_membership` | verified |
 | Members | `POST /protected/club/{club}/members/delete` | `members.delete` | verified |
 | Members | `POST /protected/club/{club}/list/all-members` | `members.query` | verified |
 | Members | `GET /protected/mv365/clubs/{club}/members/next-number/{type}` | `members.next_number` | verified |

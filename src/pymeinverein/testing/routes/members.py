@@ -206,7 +206,12 @@ class MemberRoutes(RouteGroup):
         values = body.get("values")
         if not isinstance(values, list):
             return bad_request("values")
-        set_custom_value(member, body["individualFieldId"], values)
+        set_custom_value(
+            member,
+            body["individualFieldId"],
+            values,
+            self.state.individual_fields[member["clubId"]],
+        )
         return data(
             {
                 "clubId": member["clubId"],
@@ -225,8 +230,25 @@ class MemberRoutes(RouteGroup):
         return web.Response(status=200)
 
 
-def set_custom_value(member: Json, field_id: int, values: list[str] | None) -> None:
-    """Replace (or with ``None`` remove) a member's value of a custom field."""
+#: ``IndividualFieldType.MULTISELECT``
+_MULTISELECT = 2
+
+
+def set_custom_value(
+    member: Json,
+    field_id: int,
+    values: list[str | None] | None,
+    fields: list[Json] | None = None,
+) -> None:
+    """Replace (or with ``None`` remove) a member's value of a custom field.
+
+    Observed quirk: a multiple choice field stores ``null`` for every value
+    that is not one of its options (``fields`` are the club's definitions).
+    """
+    definition = next((f for f in fields or [] if f["id"] == field_id), None)
+    if values is not None and definition and definition.get("type") == _MULTISELECT:
+        options = definition.get("options") or []
+        values = [value if value in options else None for value in values]
     kept = [
         item
         for item in member.get("memberIndividualFieldData", [])

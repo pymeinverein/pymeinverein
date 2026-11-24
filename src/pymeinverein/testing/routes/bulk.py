@@ -92,7 +92,12 @@ class BulkRoutes(RouteGroup):
             return bad_request("individualFieldData")
         for member in members:
             for entry in entries:
-                set_custom_value(member, entry["individualFieldId"], entry["values"])
+                set_custom_value(
+                    member,
+                    entry["individualFieldId"],
+                    entry["values"],
+                    self.state.individual_fields[member["clubId"]],
+                )
             if body.get("notes") is not None:
                 member["notes"] = body["notes"]
         return self._answer([])

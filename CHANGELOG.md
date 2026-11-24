@@ -12,6 +12,8 @@ All notable changes are listed here. The format follows
   update and delete members; overviews of clubs, lists, departments, roles,
   custom fields, rates, events, accounts, bookings, documents and reports;
   document and report downloads.
+- Members: `set_memberships` sets several membership periods (with exact
+  start and end, removing end dates) in one update; `MembershipPeriod`.
 - Members: membership periods (`set_membership`, `end_membership`), custom
   field values, picture upload and removal, bulk edits (`members.bulk`).
 - Departments: `club.departments` with create, update, copy, delete and
@@ -49,6 +51,10 @@ All notable changes are listed here. The format follows
 ### Fixed
 
 - File names in uploads are no longer percent-encoded (a space became `%20`).
+- Reading a member no longer fails when a multiple choice field holds `null`
+  values. The real service stores `null` for values that are not among the
+  field's options; they are now left out, and the docs no longer claim that
+  options are not checked. The mock server mirrors the behaviour.
 
 ### Changed
 

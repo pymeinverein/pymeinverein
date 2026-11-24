@@ -22,6 +22,7 @@ from ..models.member import (
     InviteResult,
     Member,
     MemberState,
+    MembershipPeriod,
     MemberType,
     SubArea,
 )
@@ -30,6 +31,18 @@ from ._util import to_payload, unwrap
 from .bulk import MemberBulkAPI, custom_values
 from .lists import ListRef, ListsAPI
 from .masterdata import MasterDataAPI
+
+
+def _period_body(item: dict[str, Any], period: MembershipPeriod) -> dict[str, Any]:
+    """Write the wanted state of ``period`` into the API's history entry ``item``."""
+    status = period.effective_status()
+    item["membershipStart"] = to_payload(period.start)
+    item["membershipEnd"] = None if period.end is None else to_payload(period.end)
+    item["status"] = int(status)
+    item["isFormer"] = status == MemberState.FORMER
+    item["isHonoured"] = period.honoured
+    return item
+
 
 #: A criterion for :meth:`MembersAPI.query`: a model or ``(column, operator, value)``.
 type Criterion = ListCriterion | tuple[str, str, object]
@@ -249,8 +262,9 @@ class MembersAPI:
 
         ``field`` is the id or the name of the field. ``value`` may be text, a
         number, a date, a boolean or - for multiple choice fields - a list. The
-        API stores everything as text and does not check a value against the
-        field's options.
+        API stores everything as text. A multiple choice field stores ``null``
+        for values that are not among its options (they are lost; reading
+        leaves them out); other fields were not seen to check their options.
         ``PUT /protected/club/{clubId}/list/individual-field-data``
         """
         field_id = await self._master_data.resolve_individual_field(field)
@@ -369,6 +383,59 @@ class MembersAPI:
         if honoured is not None:
             period["isHonoured"] = honoured
         period["isFormer"] = period["status"] == MemberState.FORMER
+        return await self.update(member_id, histories=histories)
+
+    async def set_memberships(
+        self,
+        member_id: int,
+        periods: Iterable[MembershipPeriod],
+        *,
+        replace: bool = False,
+    ) -> Member:
+        """Set several membership periods of a member with one update.
+
+        Each :class:`~pymeinverein.models.member.MembershipPeriod` describes the
+        complete period for its department: start, end (``None`` = open, an
+        existing end date is removed), status and honour. A period the member
+        already has for that department is changed in place, otherwise one is
+        added. Periods for other departments are kept, unless ``replace`` is
+        set; then they are removed.
+
+        A department may appear only once. Like :meth:`update` this loads the
+        member and sends the whole object back
+        (``GET`` + ``PATCH /protected/mv365/clubs/{clubId}/members/{id}``).
+        """
+        wanted: dict[int | None, MembershipPeriod] = {}
+        for period in periods:
+            sub_area_id = (
+                None
+                if period.department is None
+                else await self._master_data.resolve_sub_area(period.department)
+            )
+            if sub_area_id in wanted:
+                raise ValueError(
+                    f"Department {period.department!r} is given more than once"
+                )
+            wanted[sub_area_id] = period
+
+        path = f"{self._legacy}/members/{member_id}"
+        current = unwrap(
+            await self._transport.get(path, api_version="v2"),
+            "clubMember",
+            f"GET {path}",
+        )
+        histories: builtins.list[dict[str, Any]] = []
+        seen: set[int | None] = set()
+        for item in current.get("histories") or []:
+            sub_area_id = item.get("subAreaId")
+            if sub_area_id in wanted and sub_area_id not in seen:
+                seen.add(sub_area_id)
+                histories.append(_period_body(dict(item), wanted[sub_area_id]))
+            elif not replace:
+                histories.append(dict(item))
+        for sub_area_id, period in wanted.items():
+            if sub_area_id not in seen:
+                histories.append(_period_body({"subAreaId": sub_area_id}, period))
         return await self.update(member_id, histories=histories)
 
     async def end_membership(self, member_id: int, end: date | None = None) -> Member:
